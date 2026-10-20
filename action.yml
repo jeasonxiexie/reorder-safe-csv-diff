@@ -1,0 +1,38 @@
+name: Reorder Safe CSV Diff
+description: Compare CSV snapshots in pull requests without row-order noise, including duplicate keys.
+author: jeasonxiexie
+branding:
+  icon: grid
+  color: blue
+inputs:
+  key:
+    description: Comma-separated grouping columns; duplicate values are supported.
+    required: true
+  base:
+    description: Existing base commit; defaults to the pull request base or push before SHA.
+    default: '${{ github.event.pull_request.base.sha || github.event.before }}'
+  head:
+    description: Existing head commit; defaults to the pull request head or current SHA.
+    default: '${{ github.event.pull_request.head.sha || github.sha }}'
+  fail-on-change:
+    description: Fail when content changes or unresolved rows are found.
+    default: 'false'
+outputs:
+  changed-files:
+    description: Number of CSV files with content changes or unresolved rows.
+    value: '${{ steps.diff.outputs.changed-files }}'
+  report-path:
+    description: JSON report in runner temporary storage. Contains cell values; handle as source data.
+    value: '${{ steps.diff.outputs.report-path }}'
+runs:
+  using: composite
+  steps:
+    - id: diff
+      shell: bash
+      env:
+        CSV_DIFF_KEY: '${{ inputs.key }}'
+        CSV_DIFF_BASE: '${{ inputs.base }}'
+        CSV_DIFF_HEAD: '${{ inputs.head }}'
+        CSV_DIFF_FAIL: '${{ inputs.fail-on-change }}'
+        CSV_DIFF_ACTION_PATH: '${{ github.action_path }}'
+      run: python3 "$CSV_DIFF_ACTION_PATH/action_runner.py"

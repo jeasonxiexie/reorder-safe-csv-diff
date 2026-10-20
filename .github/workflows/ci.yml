@@ -1,0 +1,50 @@
+name: Test and demo
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests -v
+      - name: Create two demo snapshots
+        shell: bash
+        run: |
+          DEMO_DIR=$(mktemp -d "$RUNNER_TEMP/csv-demo.XXXXXX")
+          git -C "$DEMO_DIR" init -q
+          git -C "$DEMO_DIR" config user.name csv-diff-demo
+          git -C "$DEMO_DIR" config user.email csv-diff-demo@example.invalid
+          cp examples/old.csv "$DEMO_DIR/orders.csv"
+          git -C "$DEMO_DIR" add .
+          git -C "$DEMO_DIR" commit -qm before
+          DEMO_BASE=$(git -C "$DEMO_DIR" rev-parse HEAD)
+          cp examples/new.csv "$DEMO_DIR/orders.csv"
+          git -C "$DEMO_DIR" commit -qam after
+          DEMO_HEAD=$(git -C "$DEMO_DIR" rev-parse HEAD)
+          echo "DEMO_DIR=$DEMO_DIR" >> "$GITHUB_ENV"
+          echo "DEMO_BASE=$DEMO_BASE" >> "$GITHUB_ENV"
+          echo "DEMO_HEAD=$DEMO_HEAD" >> "$GITHUB_ENV"
+      - name: Run the action end to end
+        id: demo
+        uses: ./
+        env:
+          CSV_DIFF_WORKSPACE: '${{ env.DEMO_DIR }}'
+        with:
+          key: order_id
+          base: '${{ env.DEMO_BASE }}'
+          head: '${{ env.DEMO_HEAD }}'
+      - name: Verify action output
+        env:
+          CHANGED_FILES: '${{ steps.demo.outputs.changed-files }}'
+          REPORT_PATH: '${{ steps.demo.outputs.report-path }}'
+        run: |
+          test "$CHANGED_FILES" = "1"
+          python3 -c 'import json,os; r=json.load(open(os.environ["REPORT_PATH"])); c=r["files"][0]["report"]["counts"]; assert (c["unchanged"],c["modified"],c["added"],c["removed"]) == (3,1,0,0), c'
